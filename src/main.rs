@@ -17,8 +17,10 @@ enum Message {
 enum GameState {
     WaitBlack,
     WaitWhite,
-    CheckBlack,
-    CheckWhite,
+    CheckBlack(usize),
+    CheckWhite(usize),
+    BlackWin,
+    WhiteWin,
 }
 
 struct GomokuGame {
@@ -50,12 +52,12 @@ impl Sandbox for GomokuGame {
                         GameState::WaitBlack => {
                             println!("Put black chess at {}", index);
                             self.board.put_chess(index, true);
-                            next_state = Some(GameState::CheckBlack);
+                            next_state = Some(GameState::CheckBlack(index));
                         },
                         GameState::WaitWhite => {
                             println!("Put white chess at {}", index);
                             self.board.put_chess(index, false);
-                            next_state = Some(GameState::CheckWhite);
+                            next_state = Some(GameState::CheckWhite(index));
                         },
                         _ => ()
                     };
@@ -64,10 +66,25 @@ impl Sandbox for GomokuGame {
         };
 
         match next_state {
-            Some(GameState::CheckBlack) => { self.state = GameState::WaitWhite; }
-            Some(GameState::CheckWhite) => { self.state = GameState::WaitBlack; }
+            Some(GameState::CheckBlack(index)) => {
+                self.state = if self.board.check_five(index) { GameState::BlackWin } else { GameState::WaitWhite };
+            }
+            Some(GameState::CheckWhite(index)) => {
+                self.state = if self.board.check_five(index) { GameState::WhiteWin } else { GameState::WaitBlack };
+            }
             _ => ()
         };
+
+        match self.state {
+            GameState::BlackWin => {
+                println!("BlackWin");
+            },
+            GameState::WhiteWin => {
+                println!("WhiteWin");
+            },
+            _ => ()
+        }
+
     }
 
     fn view(&self) -> Element<'_, Self::Message> {
@@ -135,7 +152,7 @@ impl Board {
     }
 
     fn valid_pos(&self, col: usize, row: usize) -> bool {
-        col <= self.cells_per_row && row <= self.cells_per_row
+        col < self.cells_per_row && row < self.cells_per_row
     }
 
     fn index_to_pos(&self, index: usize) -> Point<usize> {
@@ -186,13 +203,44 @@ impl Board {
         let pos_from_grid = Point::new(x - self.padding, y - self.padding);
         let col = (pos_from_grid.x / self.cell_size).round() as i32;
         let row = (pos_from_grid.y / self.cell_size).round() as i32;
-        if col > 0 && row > 0 && self.valid_pos(col as usize, row as usize) {
+        if col >= 0 && row >= 0 && self.valid_pos(col as usize, row as usize) {
             let dis = pos_from_grid.distance(Point::new(col as f32 * self.cell_size, row as f32 * self.cell_size));
             // println!("board pos {}, grid pos {}, col {}, row {}, dis {}", Point::new(x, y), pos_from_grid, col, row, dis);
             if dis * 2.0 > self.cell_size * dis_scale { None } else { Some(Point::new(col as usize, row as usize)) }
         } else {
             None
         }
+    }
+
+    fn check_five(&self, index: usize) -> bool {
+        let color = if self.valid_index(index) { self.cells[index] } else { CellState::Empty };
+        if color == CellState::Empty {
+            return false;
+        }
+
+        let c = self.cells_per_row as i64;
+        // up, up_right, right, down_right, down, down_left, left, up_left
+        let eight_dir = vec![-c, -c+1, 1, c+1, c, c-1, -1, -c-1];
+        for d in eight_dir {
+            let mut i = index as i64 + d;
+            let mut win = true;
+            for _ in 0..4 {
+                if self.valid_index(i as usize) {
+                    println!("Checking pos {} d {} index {}", self.index_to_pos(i as usize), d, index);
+                }
+                if !self.valid_index(i as usize) || self.cells[i as usize] != color {
+                    win = false;
+                    break;
+                }
+
+                i += d;
+            }
+
+            if win {
+                return true;
+            }
+        }
+        return false;
     }
 }
 
